@@ -13,16 +13,15 @@ from torch.utils.data.dataloader import DataLoader
 class Trainer:
     def __init__(self, config, model, train_dataset):
         self.config = config
-        self.model = model
+        self.model = model.from_pretrained()
         self.optimizer = None
         self.train_dataset = train_dataset
         self.callbacks = defaultdict(list)
 
         # determine the device we'll train on
-        if config.device == 'auto':
-            self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        else:
-            self.device = config.device
+        
+        self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+
         self.model = self.model.to(self.device)
         print("running on device", self.device)
 
@@ -77,6 +76,7 @@ class Trainer:
 
             # backprop and update the parameters
             model.zero_grad(set_to_none=True)
+            self.loss
             self.loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
             self.optimizer.step()

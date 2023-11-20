@@ -6,14 +6,14 @@ import itertools
 from utils import set_seed, setup_logging, CfgNode as CN
 from dataset import CharDataset
 from trainer import Trainer
-from model import Feedforward, zero_one_score
+from model import Feedforward
 
 
-def pick_best(models, data, loss_fn):
+def pick_best(models, data):
     inputs, targets = data
     scores = []
     for model in models:
-        scores.append(model(inputs, targets, loss_fn)[1])
+        scores.append(model(inputs, targets)[1])
     return models[torch.argmax(torch.tensor(scores))]
 
 
@@ -68,8 +68,10 @@ def train(config, train_dataset, run_idx):
     set_seed(config.system.seed)
 
     # construct the model
+    
     config.model.vocab_size = train_dataset.get_vocab_size()
     config.model.block_size = train_dataset.get_block_size()
+
     model = Feedforward(config.model)
 
     # construct the trainer object
@@ -138,8 +140,8 @@ if __name__ == '__main__':
         trained_models.append(train(config, train_dataset, run_idx))
 
     # Pick best model according to performance of the provided loss_fn on val_dataset
-    selected_model = pick_best(trained_models, val_dataset, loss_fn=zero_one_score)
+    selected_model = pick_best(trained_models, val_dataset)
 
     # Report results
-    final_accuracy = selected_model(val_dataset[0], val_dataset[1], zero_one_score)[1] / len(val_dataset[0])
+    final_accuracy = selected_model(val_dataset[0], val_dataset[1])[1] / len(val_dataset[0])
     print(f"Final accuracy of best model: {final_accuracy.tolist()}")
