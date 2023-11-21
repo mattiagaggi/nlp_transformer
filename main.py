@@ -103,6 +103,13 @@ def train(config, train_dataset, run_idx):
 
     return model
 
+#'gopher-44m':   dict(n_layer=8, n_head=16, n_embd=512),
+# (there are a number more...)
+# I made these tiny models up
+#'gpt-mini':     dict(n_layer=6, n_head=6, n_embd=192),
+#'gpt-micro':    dict(n_layer=4, n_head=4, n_embd=128),
+#'gpt-nano':     dict(n_layer=3, n_head=3, n_embd=48),
+
 if __name__ == '__main__':
     data_config = CN()
     # If you make this bigger, make sure to give sufficient initial context to the generate method.
@@ -122,41 +129,32 @@ if __name__ == '__main__':
 
     # Set hyperparameter search space
     learning_rates = [2e-4, 3e-4]
-    hidden_dims = [200, 300, 400]
-    n_embds = [48, 96]
-    hyperparameters_list = itertools.product(learning_rates, hidden_dims, n_embds)
+    n_layers = [1,3, 4, 6]
+    n_heads = [1,3, 6]
+    n_embds = [24, 48, 96]
+    hyperparameters_list = itertools.product(learning_rates, n_layers , n_embds, n_heads)
 
     # Train a model for each combination of hyperparameters
 
-    for (run_idx, (learning_rate, hidden_dim, n_embd)) in enumerate(hyperparameters_list):
+    for (run_idx, (learning_rate, n_layer, n_embd, n_head)) in enumerate(hyperparameters_list):
         config = get_config()
         config.model.learning_rate = learning_rate
-        config.model.n_layer = hidden_dim
+        config.model.n_layer = n_layer
+        config.model.n_head= n_head
         config.model.n_embd = n_embd
-        train(config, train_dataset, run_idx)
-    config = get_config()
-    config.model.vocab_size = train_dataset.get_vocab_size()
-    config.model.block_size = train_dataset.get_block_size()
-    scores = []
-    inputs, targets = val_dataset
-    model = Feedforward(config.model)
-    for n in range(12):
-        model_path = f'out/chargpt/model_{n}.pt'
-        model.load_state_dict(torch.load(model_path))
-
-        # Make sure to set the model to evaluation mode if necessary
+        model = train(config, train_dataset, run_idx)
         model.eval()
-        
-        scores = []
+        inputs, targets = val_dataset
         subscores = []
+        # split the validation into batches for easier evaluation
         for i in range(inputs.size()[0]//1000-1):
             score_i=model.accuracy(inputs[i*1000:(i+1)*1000].to("cuda:0"), targets[i*1000:(i+1)*1000].to("cuda:0")).cpu()
             score_i=score_i.detach().numpy().mean()
             subscores.append(score_i)
         score =np.mean(score_i)
-        print(f"model number {n}, score {score}")
-        scores.append(score)
-
-    arg=np.argmax(torch.tensor(scores))
+        out_text = f'\n lr: {learning_rate}, layers: {n_layer}, n_embs: {n_embd}, n_heads {n_head} ------- accuracy: {score}'
+        print(out_text)
+        with open('out/results.txt', 'a') as file:
+            file.write(out_text)
 
    
