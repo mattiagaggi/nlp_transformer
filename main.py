@@ -151,7 +151,7 @@ if __name__ == '__main__':
             score_i=model.accuracy(inputs[i*1000:(i+1)*1000].to("cuda:0"), targets[i*1000:(i+1)*1000].to("cuda:0")).cpu()
             score_i=score_i.detach().numpy().mean()
             subscores.append(score_i)
-        score =np.mean(score_i)
+        score =np.mean(subscores)
         out_text = f'\n lr: {learning_rate}, layers: {n_layer}, n_embs: {n_embd}, n_heads {n_head} ------- accuracy: {score}'
         print(out_text)
         with open('out/results.txt', 'a') as file:
