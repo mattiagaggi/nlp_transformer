@@ -13,7 +13,7 @@ from torch.utils.data.dataloader import DataLoader
 class Trainer:
     def __init__(self, config, model, train_dataset):
         self.config = config
-        self.model = model.from_pretrained()
+        self.model=model
         self.optimizer = None
         self.train_dataset = train_dataset
         self.callbacks = defaultdict(list)

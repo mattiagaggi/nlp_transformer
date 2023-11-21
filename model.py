@@ -9,6 +9,9 @@ import math
 
 from utils import CfgNode as CN
 
+def zero_one_score(logits, targets):
+    predictions = torch.argmax(logits, axis=1)
+    return (targets == predictions)
 
 class NewGELU(nn.Module):
     """
@@ -88,7 +91,7 @@ class Feedforward(nn.Module):
     def get_default_config():
         C = CN()
         # either model_type or (n_layer, n_head, n_embd) must be given in the config
-        C.model_type = 'gpt-nano'
+        C.model_type = 'gpt-mini'
         C.n_layer = None
         C.n_head = None
         C.n_embd =  None
@@ -146,57 +149,7 @@ class Feedforward(nn.Module):
         self.to("cuda")
         print("number of parameters: %.2fM" % (n_params/1e6,))
         
-    
-    @classmethod
-    def from_pretrained(cls):
-        """
-        Initialize a pretrained GPT model by copying over the weights
-        from a huggingface/transformers checkpoint.
-        """
-        model_type =  'gpt2'
-        assert model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}
-        from transformers import GPT2LMHeadModel
 
-        # create a from-scratch initialized minGPT model
-        config = cls.get_default_config()
-        config.model_type = model_type
-        config.vocab_size = 50257 # openai's model vocabulary
-        config.block_size = 1024  # openai's model block_size
-        model = Feedforward(config)
-        sd = model.state_dict()
-
-        # init a huggingface/transformers model
-        model_hf = GPT2LMHeadModel.from_pretrained(model_type)
-        sd_hf = model_hf.state_dict()
-
-        # copy while ensuring all of the parameters are aligned and match in names and shapes
-        keys = [k for k in sd_hf if not k.endswith('attn.masked_bias')] # ignore these
-        transposed = ['attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight']
-        # basically the openai checkpoints use a "Conv1D" module, but we only want to use a vanilla nn.Linear.
-        # this means that we have to transpose these weights when we import them
-        print(f"Number of keys: {len(keys)}, Number of items in sd: {len(sd)}")  # Add this line
-            
-        if len(keys) != len(sd):
-            extra_keys = set(sd) - set(keys)
-            print(f"Extra keys in sd: {extra_keys}")  # Add this line
-        if len(keys) != len(sd):
-            extra_keys = set(keys) - set(sd)
-            print(f"Extra keys in keys: {extra_keys}")  # Add this line
-        #assert len(keys) == len(sd)
-       
-        for k in keys:
-            if any(k.endswith(w) for w in transposed):
-                # special treatment for the Conv1D weights we need to transpose
-                assert sd_hf[k].shape[::-1] == sd[k].shape
-                with torch.no_grad():
-                    sd[k].copy_(sd_hf[k].t())
-            else:
-                # vanilla copy over the other parameters
-                assert sd_hf[k].shape == sd[k].shape
-                with torch.no_grad():
-                    sd[k].copy_(sd_hf[k])
-
-        return model
     
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -275,6 +228,30 @@ class Feedforward(nn.Module):
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
 
         return logits, loss
+    
+    def accuracy(self, idx, targets=None):
+        device = idx.device
+        b, t = idx.size()
+        assert t <= self.block_size, f"Cannot forward sequence of length {t}, block size is only {self.block_size}"
+        pos = torch.arange(0, t, dtype=torch.long, device=device).unsqueeze(0) # shape (1, t)
+
+        # forward the GPT model itself
+        tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
+        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (1, t, n_embd)
+        x = self.transformer.drop(tok_emb + pos_emb)
+        for block in self.transformer.h:
+            x = block(x)
+        x = self.transformer.ln_f(x)
+        logits = self.lm_head(x)
+
+        # if we are given some desired targets also calculate the loss
+        loss = None
+        if targets is not None:
+            loss = zero_one_score(logits.view(-1, logits.size(-1)), targets.view(-1))
+
+        # Reshape output to be consistent with the rest of the training framework
+        return loss
+    
     
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=1.0, do_sample=False, top_k=None):

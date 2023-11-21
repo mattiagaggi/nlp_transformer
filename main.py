@@ -7,14 +7,10 @@ from utils import set_seed, setup_logging, CfgNode as CN
 from dataset import CharDataset
 from trainer import Trainer
 from model import Feedforward
+import json
+import numpy as np
 
 
-def pick_best(models, data):
-    inputs, targets = data
-    scores = []
-    for model in models:
-        scores.append(model(inputs, targets)[1])
-    return models[torch.argmax(torch.tensor(scores))]
 
 
 def get_val_dataset(data_config, val_data):
@@ -49,8 +45,8 @@ def get_config():
     # dataloder parameters
     C.trainer.num_workers = 4
     # optimizer parameters
-    C.trainer.max_iters = 1000
-    C.trainer.batch_size = 64
+    C.trainer.max_iters = 5000
+    C.trainer.batch_size = 128
     C.trainer.learning_rate = 5e-4
     C.trainer.betas = (0.9, 0.95)
     C.trainer.weight_decay = 0.1 # only applied on matmul weights
@@ -131,17 +127,36 @@ if __name__ == '__main__':
     hyperparameters_list = itertools.product(learning_rates, hidden_dims, n_embds)
 
     # Train a model for each combination of hyperparameters
-    trained_models = []
+
     for (run_idx, (learning_rate, hidden_dim, n_embd)) in enumerate(hyperparameters_list):
         config = get_config()
         config.model.learning_rate = learning_rate
-        config.model.hidden_dim = hidden_dim
+        config.model.n_layer = hidden_dim
         config.model.n_embd = n_embd
-        trained_models.append(train(config, train_dataset, run_idx))
+        train(config, train_dataset, run_idx)
+    config = get_config()
+    config.model.vocab_size = train_dataset.get_vocab_size()
+    config.model.block_size = train_dataset.get_block_size()
+    scores = []
+    inputs, targets = val_dataset
+    model = Feedforward(config.model)
+    for n in range(12):
+        model_path = f'out/chargpt/model_{n}.pt'
+        model.load_state_dict(torch.load(model_path))
 
-    # Pick best model according to performance of the provided loss_fn on val_dataset
-    selected_model = pick_best(trained_models, val_dataset)
+        # Make sure to set the model to evaluation mode if necessary
+        model.eval()
+        
+        scores = []
+        subscores = []
+        for i in range(inputs.size()[0]//1000-1):
+            score_i=model.accuracy(inputs[i*1000:(i+1)*1000].to("cuda:0"), targets[i*1000:(i+1)*1000].to("cuda:0")).cpu()
+            score_i=score_i.detach().numpy().mean()
+            subscores.append(score_i)
+        score =np.mean(score_i)
+        print(f"model number {n}, score {score}")
+        scores.append(score)
 
-    # Report results
-    final_accuracy = selected_model(val_dataset[0], val_dataset[1])[1] / len(val_dataset[0])
-    print(f"Final accuracy of best model: {final_accuracy.tolist()}")
+    arg=np.argmax(torch.tensor(scores))
+
+   
