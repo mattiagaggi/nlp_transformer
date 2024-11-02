@@ -1,12 +1,6 @@
-# MLC Machine Learning Engineer (NLP) Task
+# Training MiniGPT
 
-<p align="center">
-  <img width="30%" src="LogoGreen_New.png"/>
-</p>
-
-NOTE: If you have been assigned this task, _do not_ publicly fork this repo. Instead, follow the instructions in the task doc you have been provided.
-
-This is the repo for the MLC Machine Learning Engineer (NLP) Task, which involves training a small neural network to perform language modelling on an example piece of text.
+This is the repo  which involves training a small neural network to perform language modelling on an example piece of text.
 
 ## Requirements
 - Python 3
